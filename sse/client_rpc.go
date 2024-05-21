@@ -3,6 +3,7 @@ package sse
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -54,31 +55,41 @@ func (c *InternalClient) Subscribe(eventChan chan<- Event) (SSESubscription, err
 
 // readEvents reads the events and sends them to the event channel
 func (s *Subscription) readEvents() {
-	for s.scanner.Scan() {
-		data := s.scanner.Text()
-		if data == ":ping" || data == "" {
-			continue
-		}
+	for {
+		if s.scanner.Scan() {
+			data := s.scanner.Text()
+			if data == ":ping" || data == "" {
+				continue
+			}
 
-		data = strings.TrimPrefix(data, "data: ")
+			data = strings.TrimPrefix(data, "data: ")
 
-		var event MatchMakerEvent
-		err := json.Unmarshal([]byte(data), &event)
+			var event MatchMakerEvent
+			err := json.Unmarshal([]byte(data), &event)
 
-		select {
-		case <-s.stopper:
-			close(s.eventChan)
-			close(s.stopper)
-			return
-		default:
-			if err != nil {
-				s.eventChan <- Event{
-					Error: err,
+			select {
+			case <-s.stopper:
+				close(s.eventChan)
+				close(s.stopper)
+				return
+			default:
+				if err != nil {
+					s.eventChan <- Event{
+						Error: err,
+					}
+				} else {
+					s.eventChan <- Event{
+						Data: &event,
+					}
 				}
-			} else {
-				s.eventChan <- Event{
-					Data: &event,
-				}
+			}
+		} else {
+			err := s.scanner.Err()
+			if err == nil {
+				err = errors.New("EOF")
+			}
+			s.eventChan <- Event{
+				Error: err,
 			}
 		}
 	}
