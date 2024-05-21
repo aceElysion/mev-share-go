@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/duoxehyon/mev-share-go/sse"
+	"github.com/aceElysion/mev-share-go/sse"
 )
 
 func main() {
