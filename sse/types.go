@@ -27,29 +27,26 @@ type MatchMakerEvent struct {
 
 // PendingTransaction represents the hits revealed by the matchmaker about the transaction / bundle
 type PendingTransaction struct {
-	To               common.Address `json:"to"`
-	FunctionSelector [4]byte        `json:"functionSelector,omitempty"`
-	CallData         []byte         `json:"callData,omitempty"` // Could be replaces with geth.hexutil type
-	MevGasPrice      *hexutil.Big   `json:"mevGasPrice,omitempty"`
-	GasUsed          *hexutil.Big   `json:"gasUsed,omitempty"`
+	Hash             *common.Hash    `json:"hash,omitempty"`
+	To               *common.Address `json:"to,omitempty"`
+	FunctionSelector [4]byte         `json:"functionSelector,omitempty"`
+	CallData         []byte          `json:"callData,omitempty"`
 }
 
 // UnmarshalJSON unmarshals JSON data into a PendingTransaction
 func (t *PendingTransaction) UnmarshalJSON(data []byte) error {
 	var temp struct {
-		To               common.Address `json:"to"`
-		FunctionSelector string         `json:"functionSelector,omitempty"`
-		CallData         string         `json:"callData,omitempty"`
-		MevGasPrice      *hexutil.Big   `json:"mevGasPrice,omitempty"`
-		GasUsed          *hexutil.Big   `json:"gasUsed,omitempty"`
+		Hash             *common.Hash    `json:"hash,omitempty"`
+		To               *common.Address `json:"to"`
+		FunctionSelector string          `json:"functionSelector,omitempty"`
+		CallData         string          `json:"callData,omitempty"`
 	}
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
 	}
 
-	t.MevGasPrice = temp.MevGasPrice
-	t.GasUsed = temp.GasUsed
 	t.To = temp.To
+	t.Hash = temp.Hash
 
 	if temp.CallData != "" && temp.CallData != "0x" {
 		decoded, err := hex.DecodeString(strings.TrimPrefix(temp.CallData, "0x"))
