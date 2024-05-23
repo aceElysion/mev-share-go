@@ -79,13 +79,17 @@ func (s *Subscription) readEvents() {
 			close(s.stopper)
 			return
 		default:
-			s.eventChan <- Event{
-				Data:  &event,
-				Error: err,
+			if err != nil {
+				s.eventChan <- Event{
+					Error: err,
+				}
+			} else {
+				s.eventChan <- Event{
+					Data: &event,
+				}
 			}
 		}
 	}
-
 }
 
 // Stop stops the subscription to matchmaker events
