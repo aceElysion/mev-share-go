@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -23,8 +24,8 @@ func New(baseURL string) SSEClient {
 // Subscription represents a subscription to matchmaker events
 type Subscription struct {
 	client    http.Client
+	rspBody   io.ReadCloser
 	stopper   chan struct{}
-	scanner   *bufio.Scanner
 	eventChan chan<- Event
 }
 
@@ -43,9 +44,9 @@ func (c *InternalClient) Subscribe(eventChan chan<- Event) (SSESubscription, err
 
 	sub := &Subscription{
 		client:    client,
+		rspBody:   resp.Body,
 		eventChan: eventChan,
 		stopper:   make(chan struct{}),
-		scanner:   bufio.NewScanner(resp.Body),
 	}
 
 	go sub.readEvents()
@@ -55,41 +56,52 @@ func (c *InternalClient) Subscribe(eventChan chan<- Event) (SSESubscription, err
 
 // readEvents reads the events and sends them to the event channel
 func (s *Subscription) readEvents() {
+	defer s.rspBody.Close()
+
 	var err error
 	var event MatchMakerEvent
+	scanner := bufio.NewScanner(s.rspBody)
+
+	isQuit := false
+ScanLoop:
 	for {
-		// get and unmarshal event or error
-		if s.scanner.Scan() {
-			data := s.scanner.Text()
+		if scanner.Scan() {
+			data := scanner.Text()
 			if data == ":ping" || data == "" {
 				continue
 			}
 			data = strings.TrimPrefix(data, "data: ")
 			err = json.Unmarshal([]byte(data), &event)
-		} else {
-			err = s.scanner.Err()
-			if err == nil {
-				err = errors.New("EOF")
-			}
-		}
-		// send event or stop
-		select {
-		case <-s.stopper:
-			close(s.eventChan)
-			close(s.stopper)
-			return
-		default:
-			if err != nil {
+
+			// send event or stop
+			select {
+			case <-s.stopper:
+				isQuit = true
+				break ScanLoop
+			default:
 				s.eventChan <- Event{
+					Data:  &event,
 					Error: err,
-				}
-			} else {
-				s.eventChan <- Event{
-					Data: &event,
 				}
 			}
 		}
 	}
+
+	if !isQuit {
+		// 出现error
+		err = scanner.Err()
+		if err == nil {
+			err = errors.New("EOF")
+		}
+		s.eventChan <- Event{
+			Error: err,
+		}
+		// 等待关闭
+		<-s.stopper
+	}
+	// 退出
+	close(s.eventChan)
+	close(s.stopper)
 }
 
 // Stop stops the subscription to matchmaker events
