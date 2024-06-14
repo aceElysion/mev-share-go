@@ -62,46 +62,34 @@ func (s *Subscription) readEvents() {
 	var event MatchMakerEvent
 	scanner := bufio.NewScanner(s.rspBody)
 
-	isQuit := false
-ScanLoop:
 	for {
 		if scanner.Scan() {
 			data := scanner.Text()
-			if data == ":ping" || data == "" {
-				continue
+			if len(data) > 0 && data != ":ping" {
+				data = strings.TrimPrefix(data, "data: ")
+				_ = json.Unmarshal([]byte(data), &event)
 			}
-			data = strings.TrimPrefix(data, "data: ")
-			err = json.Unmarshal([]byte(data), &event)
+		} else {
+			// 出现error
+			err = scanner.Err()
+			if err == nil {
+				err = errors.New("EOF")
+			}
+		}
 
-			// send event or stop
-			select {
-			case <-s.stopper:
-				isQuit = true
-				break ScanLoop
-			default:
-				s.eventChan <- Event{
-					Data:  &event,
-					Error: err,
-				}
+		// send event or stop
+		select {
+		case <-s.stopper:
+			close(s.eventChan)
+			close(s.stopper)
+			return
+		default:
+			s.eventChan <- Event{
+				Data:  &event,
+				Error: err,
 			}
 		}
 	}
-
-	if !isQuit {
-		// 出现error
-		err = scanner.Err()
-		if err == nil {
-			err = errors.New("EOF")
-		}
-		s.eventChan <- Event{
-			Error: err,
-		}
-		// 等待关闭
-		<-s.stopper
-	}
-	// 退出
-	close(s.eventChan)
-	close(s.stopper)
 }
 
 // Stop stops the subscription to matchmaker events
