@@ -63,20 +63,6 @@ func (s *Subscription) readEvents() {
 	scanner := bufio.NewScanner(s.rspBody)
 
 	for {
-		if scanner.Scan() {
-			data := scanner.Text()
-			if len(data) > 0 && data != ":ping" {
-				data = strings.TrimPrefix(data, "data: ")
-				_ = json.Unmarshal([]byte(data), &event)
-			}
-		} else {
-			// 出现error
-			err = scanner.Err()
-			if err == nil {
-				err = errors.New("EOF")
-			}
-		}
-
 		// send event or stop
 		select {
 		case <-s.stopper:
@@ -84,9 +70,25 @@ func (s *Subscription) readEvents() {
 			close(s.stopper)
 			return
 		default:
-			s.eventChan <- Event{
-				Data:  &event,
-				Error: err,
+			if err == nil {
+				if scanner.Scan() {
+					data := scanner.Text()
+					if len(data) > 0 && data != ":ping" {
+						data = strings.TrimPrefix(data, "data: ")
+						_ = json.Unmarshal([]byte(data), &event)
+					}
+				} else {
+					// 出现error
+					err = scanner.Err()
+					if err == nil {
+						err = errors.New("EOF")
+					}
+				}
+
+				s.eventChan <- Event{
+					Data:  &event,
+					Error: err,
+				}
 			}
 		}
 	}
